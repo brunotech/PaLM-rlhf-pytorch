@@ -105,10 +105,7 @@ def masked_kl_div(prob1, prob2, mask = None):
     """
     kl_divs = (prob1 * (log(prob2) - log(prob1))).sum(dim = -1)
 
-    if not exists(mask):
-        return kl_divs.mean()
-
-    return masked_mean(kl_divs, mask).mean()
+    return masked_mean(kl_divs, mask).mean() if exists(mask) else kl_divs.mean()
 
 def clipped_value_loss(values, rewards, old_values, clip):
     value_clipped = old_values + (values - old_values).clamp(-clip, clip)
@@ -275,9 +272,7 @@ class RLHFTrainer(nn.Module):
         best_sequence_index = rewards.topk(1, dim = -1).indices
 
         best_sequence = sequences[best_sequence_index]
-        best_sequence = rearrange(best_sequence, '1 ... -> ...')
-
-        return best_sequence
+        return rearrange(best_sequence, '1 ... -> ...')
 
     def learn(
         self,
@@ -331,7 +326,7 @@ class RLHFTrainer(nn.Module):
 
                 # handle non-pooled values
 
-                normalize_kwargs = dict()
+                normalize_kwargs = {}
 
                 if old_values.ndim == 2:
                     old_values = old_values[:, -action_len:]
@@ -400,8 +395,8 @@ class RLHFTrainer(nn.Module):
         time = 0
         memories = deque([])
 
-        for eps in tqdm(range(num_episodes), desc = 'episodes'):
-            for timestep in range(max_timesteps):
+        for _ in tqdm(range(num_episodes), desc = 'episodes'):
+            for _ in range(max_timesteps):
                 time += 1
 
                 # select a bunch of random states (prompts)

@@ -27,11 +27,10 @@ SEQ_LEN = 1024
 
 def cycle(loader):
     while True:
-        for data in loader:
-            yield data
+        yield from loader
 
 def decode_token(token):
-    return str(chr(max(32, token)))
+    return chr(max(32, token))
 
 def decode_tokens(tokens):
     return "".join(list(map(decode_token, tokens)))

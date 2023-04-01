@@ -25,9 +25,7 @@ def identity(t, *args, **kwargs):
     return t
 
 def safe_cat(acc, t, dim = 1):
-    if not exists(acc):
-        return t
-    return torch.cat((acc, t), dim = dim)
+    return torch.cat((acc, t), dim = dim) if exists(acc) else t
 
 def eval_decorator(fn):
     def inner(self, *args, **kwargs):
@@ -61,10 +59,7 @@ class Residual(nn.Module):
     def forward(self, x, **kwargs):
         y = self.fn(x, **kwargs)
 
-        if not any([t.requires_grad for t in (x, y)]):
-            return x.add_(y)
-
-        return y + x
+        return y + x if any(t.requires_grad for t in (x, y)) else x.add_(y)
 
 # rotary positional embedding w/ xpos
 # https://arxiv.org/abs/2104.09864
@@ -382,7 +377,7 @@ class PaLM(nn.Module):
 
         n, out = prompt.shape[-1], prompt.clone()
 
-        wrapper_fn = identity if not use_tqdm else tqdm
+        wrapper_fn = tqdm if use_tqdm else identity
         sample_num_times = max(1, seq_len - prompt.shape[-1])
 
         for _ in wrapper_fn(range(sample_num_times)):
@@ -537,10 +532,11 @@ class RewardModel(nn.Module):
         if not exists(labels):
             return pred
 
-        if not self.binned_output:
-            return F.mse_loss(pred, labels)
-
-        return F.cross_entropy(pred, labels)
+        return (
+            F.cross_entropy(pred, labels)
+            if self.binned_output
+            else F.mse_loss(pred, labels)
+        )
 
 # PaLM with actor and critic heads
 
@@ -592,21 +588,21 @@ class ActorCritic(nn.Module):
         )
 
     def actor_parameters(self):
-        if not self.actor_lora:
-            return self.actor_palm.parameters()
-
-        return [
-            *self.actor_palm.finetune_parameters(self.actor_lora_scope)
-        ]
+        return (
+            [*self.actor_palm.finetune_parameters(self.actor_lora_scope)]
+            if self.actor_lora
+            else self.actor_palm.parameters()
+        )
 
     def critic_parameters(self):
-        if not self.actor_lora:
-            return [*self.critic_palm.parameters(), *self.value_head.parameters()]
-
-        return [
-            *self.critic_palm.finetune_parameters(self.critic_lora_scope),
-            *self.value_head.parameters()
-        ]
+        return (
+            [
+                *self.critic_palm.finetune_parameters(self.critic_lora_scope),
+                *self.value_head.parameters(),
+            ]
+            if self.actor_lora
+            else [*self.critic_palm.parameters(), *self.value_head.parameters()]
+        )
 
     @torch.no_grad()
     @eval_decorator
